@@ -1,13 +1,12 @@
 use std::io;
 use std::net::IpAddr;
-use std::time::Duration;
 
 use tokio::io::AsyncReadExt;
 use tokio::net::TcpStream;
-use tokio::time;
 
 use crate::defaults::{CONNECT_TIMEOUT, READ_TIMEOUT};
 use crate::port::{Port, PortStatus, PortsList};
+use crate::utils::run_with_timeout;
 
 #[derive(Debug)]
 pub struct TcpScanner {
@@ -32,26 +31,9 @@ impl TcpScanner {
     }
 }
 
-async fn run_with_timeout<O>(
-    timeout: Duration,
-    fut: impl std::future::Future<Output = O>,
-) -> Option<O> {
-    let sleep = time::sleep(timeout);
-    tokio::pin!(sleep);
-
-    tokio::select! {
-        ready = fut => {
-            Some(ready)
-        }
-        _ = &mut sleep => {
-            None
-        }
-    }
-}
-
 async fn test_port(ip: IpAddr, port: u16) -> Port {
-    let connect_timeout = CONNECT_TIMEOUT.get();
-    let read_timeout = READ_TIMEOUT.get();
+    let connect_timeout = unsafe { CONNECT_TIMEOUT };
+    let read_timeout = unsafe { READ_TIMEOUT };
 
     let status = match run_with_timeout(connect_timeout, TcpStream::connect((ip, port))).await {
         Some(Ok(mut s)) => {

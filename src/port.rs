@@ -63,6 +63,22 @@ pub struct Port {
     pub num: u16,
 }
 
+impl Port {
+    pub fn is_open(&self) -> bool {
+        match self.status {
+            PortStatus::Opened { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn has_banner(&self) -> bool {
+        match self.status {
+            PortStatus::Opened { ref banner } => banner.is_some(),
+            _ => false,
+        }
+    }
+}
+
 impl fmt::Display for Port {
     fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
         write!(f, "{:5}: {}", self.num, self.status)

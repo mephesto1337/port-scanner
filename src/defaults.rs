@@ -1,4 +1,3 @@
-use std::cell::Cell;
 use std::time::Duration;
 
 pub const TOP_TCP_PORTS: [u16; 1000] = [
@@ -67,5 +66,7 @@ pub const TOP_TCP_PORTS: [u16; 1000] = [
     55600, 56737, 56738, 57294, 57797, 58080, 60020, 60443, 61532, 61900, 62078, 63331, 64623,
     64680, 65000, 65129, 65389,
 ];
-pub const CONNECT_TIMEOUT: Cell<Duration> = Cell::new(Duration::from_secs(5));
-pub const READ_TIMEOUT: Cell<Duration> = Cell::new(Duration::from_secs(2));
+pub static mut CONNECT_TIMEOUT: Duration = Duration::from_secs(1);
+pub static mut READ_TIMEOUT: Duration = Duration::from_secs(1);
+pub static mut USER_AGENT: &'static str = 
+    "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; chromeframe/12.0.742.112)";

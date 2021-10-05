@@ -4,7 +4,9 @@ use structopt::StructOpt;
 
 mod defaults;
 mod port;
+mod probes;
 mod tcp;
+mod utils;
 
 use defaults::*;
 
@@ -34,6 +36,14 @@ struct Opt {
     /// Sets read timeout (in milliseconds) for banner
     #[structopt(short, long, parse(try_from_str), default_value = "2000")]
     read_timeout: u64,
+
+    /// Override User-Agent
+    #[structopt(
+        short,
+        long,
+        default_value = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; chromeframe/12.0.742.112)"
+    )]
+    user_agent: String,
 }
 
 #[tokio::main]
@@ -86,10 +96,23 @@ async fn main() {
     ports.remove_ports(&opts.exclude_ports[..]);
 
     if opts.connect_timeout > 0 {
-        CONNECT_TIMEOUT.set(Duration::from_millis(opts.connect_timeout));
+        // SAFETY: only access in write mode during init
+        unsafe {
+            CONNECT_TIMEOUT = Duration::from_millis(opts.connect_timeout);
+        }
     }
     if opts.read_timeout > 0 {
-        READ_TIMEOUT.set(Duration::from_millis(opts.read_timeout));
+        // SAFETY: only access in write mode during init
+        unsafe {
+            READ_TIMEOUT = Duration::from_millis(opts.read_timeout);
+        }
+    }
+
+    let boxed_user_agent = opts.user_agent.into_boxed_str();
+
+    // SAFETY: only access in write mode during init
+    unsafe {
+        USER_AGENT = Box::leak(boxed_user_agent);
     }
 
     eprintln!("Got {} ports to scan from {}", ports.len(), &opts.host);
@@ -104,5 +127,11 @@ async fn main() {
             continue;
         }
         println!("{}", p);
+        if p.is_open() && !p.has_banner() {
+            let peer_addr = (opts.host, p.num).into();
+            if let Err(e) = probes::check_probes(&peer_addr).await {
+                eprintln!("Issue when checking probes for {}: {}", p.num, e);
+            }
+        }
     }
 }
