@@ -6,7 +6,7 @@ use tokio::net::TcpStream;
 
 use crate::defaults::{CONNECT_TIMEOUT, READ_TIMEOUT};
 use crate::port::{Port, PortStatus, PortsList};
-use crate::utils::run_with_timeout;
+use crate::utils::{run_with_timeout, Semaphore};
 
 #[derive(Debug)]
 pub struct TcpScanner {
@@ -20,12 +20,18 @@ impl TcpScanner {
 
     pub async fn scan(&self, ip: IpAddr) -> io::Result<Vec<Port>> {
         // TODO: shuffle array
-        let mut results = futures::future::join_all(
-            self.ports
-                .iter()
-                .map(|p| tokio::spawn(test_port(ip.clone(), p))),
-        )
-        .await;
+        let semaphore = Semaphore::new(512);
+        let mut results = Vec::with_capacity(self.ports.len());
+
+        for port in self.ports.iter() {
+            let ticket = semaphore.acquire().await;
+            results.push(tokio::spawn(async move {
+                let port = test_port(ip.clone(), port).await;
+                drop(ticket);
+                port
+            }));
+        }
+        let mut results = futures::future::join_all(results).await;
 
         Ok(results.drain(..).filter_map(|j| j.ok()).collect::<Vec<_>>())
     }
@@ -38,10 +44,11 @@ async fn test_port(ip: IpAddr, port: u16) -> Port {
     let status = match run_with_timeout(connect_timeout, TcpStream::connect((ip, port))).await {
         Some(Ok(mut s)) => {
             let mut buf = Vec::with_capacity(1024);
-            let got_banner = run_with_timeout(read_timeout, s.read_buf(&mut buf)).await;
-            PortStatus::Opened {
-                banner: got_banner.map(|_| buf),
-            }
+            let banner = match run_with_timeout(read_timeout, s.read_buf(&mut buf)).await {
+                Some(Ok(n)) if n > 0 => Some(buf),
+                _ => None,
+            };
+            PortStatus::Opened { banner }
         }
         Some(Err(ref e)) => {
             if e.kind() == io::ErrorKind::ConnectionRefused {
