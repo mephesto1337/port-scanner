@@ -1,4 +1,3 @@
-use std::io;
 use std::net::SocketAddr;
 
 use tokio::net::TcpStream;
@@ -8,7 +7,7 @@ use trust_dns_client::proto::iocompat::AsyncIoTokioAsStd;
 use trust_dns_client::rr::{DNSClass, Name, RData, RecordType};
 use trust_dns_client::tcp::TcpClientStream;
 
-use super::{Probe, ProbeStatus};
+use super::{Probe, ProbeCheckFuture, ProbeStatus};
 
 pub struct DnsProbe;
 
@@ -23,7 +22,6 @@ macro_rules! proto_error_to_unknown {
     }};
 }
 
-#[async_trait::async_trait]
 impl Probe for DnsProbe {
     fn name(&self) -> &'static str {
         "dns"
@@ -36,8 +34,8 @@ impl Probe for DnsProbe {
         }
     }
 
-    async fn check(&self, peer_addr: SocketAddr) -> io::Result<ProbeStatus> {
-        {
+    fn check(&self, peer_addr: SocketAddr) -> ProbeCheckFuture {
+        Box::pin(async move {
             let (stream, sender) =
                 TcpClientStream::<AsyncIoTokioAsStd<TcpStream>>::new(peer_addr.clone());
 
@@ -52,11 +50,11 @@ impl Probe for DnsProbe {
             let response =
                 proto_error_to_unknown!(client.query(name, DNSClass::IN, RecordType::PTR,).await);
 
-            if let Some(RData::PTR(name)) = response.answers().first().map(|a| a.rdata()) {
+            if let Some(RData::PTR(name)) = response.answers().first().and_then(|a| a.data()) {
                 println!("      - PTR({}) = {}", peer_addr.ip(), name.to_utf8());
             }
 
             Ok(ProbeStatus::Recognized)
-        }
+        })
     }
 }

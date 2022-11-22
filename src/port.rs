@@ -24,6 +24,8 @@ fn escape_string(f: &mut fmt::Formatter, string: &str) -> fmt::Result {
             f.write_str("\\t")?;
         } else if c == '\r' {
             f.write_str("\\r")?;
+        } else if c == '"' {
+            f.write_str("\\\"")?;
         } else {
             f.write_char(c)?;
         }

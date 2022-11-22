@@ -18,7 +18,7 @@ impl TcpScanner {
         Self { ports }
     }
 
-    pub async fn scan(&self, ip: IpAddr) -> io::Result<Vec<Port>> {
+    pub async fn scan(&self, ip: IpAddr, verbose: bool) -> io::Result<Vec<Port>> {
         // TODO: shuffle array
         let semaphore = Semaphore::new(512);
         let mut results = Vec::with_capacity(self.ports.len());
@@ -28,6 +28,9 @@ impl TcpScanner {
             results.push(tokio::spawn(async move {
                 let port = test_port(ip.clone(), port).await;
                 drop(ticket);
+                if verbose && port.is_open() {
+                    eprintln!("Port {} is opened.", port.num);
+                }
                 port
             }));
         }

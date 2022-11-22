@@ -1,5 +1,7 @@
+use std::future::Future;
 use std::io;
 use std::net::SocketAddr;
+use std::pin::Pin;
 
 use crate::defaults::READ_TIMEOUT;
 use crate::utils::run_with_timeout;
@@ -14,8 +16,9 @@ pub enum ProbeStatus {
     Unknown,
 }
 
+pub type ProbeCheckFuture = Pin<Box<dyn Future<Output = io::Result<ProbeStatus>> + Send>>;
+
 /// Probe a probe to recognize protocol
-#[async_trait::async_trait]
 pub trait Probe {
     /// protocol's name
     fn name(&self) -> &'static str;
@@ -24,7 +27,7 @@ pub trait Probe {
     fn is_prefered_port(&self, port: u16) -> bool;
 
     /// Checks the remote connection
-    async fn check(&self, peer_addr: SocketAddr) -> io::Result<ProbeStatus>;
+    fn check(&self, peer_addr: SocketAddr) -> ProbeCheckFuture;
 }
 
 lazy_static::lazy_static! {

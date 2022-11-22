@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use structopt::StructOpt;
+use clap::Parser;
 
 mod defaults;
 mod port;
@@ -10,35 +10,39 @@ mod utils;
 
 use defaults::*;
 
-#[derive(Debug, StructOpt)]
+#[derive(Debug, Parser)]
 #[structopt(name = "tcp-scanner", about = "TCP scanner in async Rust")]
 struct Opt {
     /// Host to scan
-    #[structopt(short = "H", long, parse(try_from_str))]
+    #[arg(short = 'H', long)]
     host: std::net::IpAddr,
 
     /// Port range
-    #[structopt(short, long)]
+    #[arg(short, long)]
     port: Option<String>,
 
     /// Exclude theses ports
-    #[structopt(short, long, parse(try_from_str))]
+    #[arg(short, long)]
     exclude_ports: Vec<u16>,
 
     /// Hide filtered ports
-    #[structopt(short, long)]
+    #[arg(short, long)]
     hide_filtered: bool,
 
+    /// Verbose output
+    #[arg(short, long)]
+    verbose: bool,
+
     /// Sets connect timeout (in milliseconds)
-    #[structopt(short, long, parse(try_from_str), default_value = "5000")]
+    #[arg(short, long, default_value_t = 5000)]
     connect_timeout: u64,
 
     /// Sets read timeout (in milliseconds) for banner
-    #[structopt(short, long, parse(try_from_str), default_value = "2000")]
+    #[arg(short, long, default_value_t = 2000)]
     read_timeout: u64,
 
     /// Override User-Agent
-    #[structopt(
+    #[arg(
         short,
         long,
         default_value = "Mozilla/5.0 (compatible; MSIE 9.0; Windows NT 6.1; WOW64; Trident/5.0; chromeframe/12.0.742.112)"
@@ -48,7 +52,7 @@ struct Opt {
 
 #[tokio::main]
 async fn main() {
-    let opts = Opt::from_args();
+    let opts = Opt::parse();
 
     let ports_spec = opts.port.unwrap_or_default();
     let mut ports = port::PortsList::new();
@@ -61,6 +65,11 @@ async fn main() {
                 None => {
                     let port = ps.parse::<u16>().expect(&format!("Invalid port {:?}", ps));
                     ports.add_port(port);
+                }
+                Some(("", "")) => {
+                    for p in 0..=65535 {
+                        ports.add_port(p);
+                    }
                 }
                 Some((lower, "")) => {
                     let port = lower
@@ -118,7 +127,11 @@ async fn main() {
     eprintln!("Got {} ports to scan from {}", ports.len(), &opts.host);
 
     let scanner = tcp::TcpScanner::new(ports);
-    let results = scanner.scan(opts.host).await.expect("Cannot scan IP");
+    let results = scanner
+        .scan(opts.host, opts.verbose)
+        .await
+        .expect("Cannot scan IP");
+    eprintln!("");
     for p in &results {
         if p.status == port::PortStatus::Closed {
             continue;

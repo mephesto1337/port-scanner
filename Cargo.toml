@@ -8,10 +8,9 @@ edition = "2021"
 [dependencies]
 tokio = { version = "1", features = ["rt-multi-thread", "io-util", "net", "time", "macros"] }
 futures = "0.3"
-structopt = "0.3"
+clap = { version = "4", features = ["derive"] }
 lazy_static = "1.4"
-trust-dns-client = "0.20"
+trust-dns-client = "0.22"
 rand = "0.8"
-tokio-rustls =  { path = "vendor/tls/tokio-rustls", features = ["tls12", "dangerous_configuration"] }
-async-trait = "0.1"
-x509-parser = "0.12"
+tokio-rustls = { version = "0.23", features = ["dangerous_configuration"] }
+x509-parser = "0.14"

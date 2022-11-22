@@ -49,7 +49,7 @@ pub struct Ticket {
 
 impl Semaphore {
     pub fn new(max: usize) -> Arc<Self> {
-        assert!(SLOT_FREE != SLOT_OCCUPIED);
+        debug_assert!(SLOT_FREE != SLOT_OCCUPIED);
         Arc::new(Self {
             tickets: (0..max).map(|_| AtomicBool::new(SLOT_FREE)).collect(),
             wakers: Mutex::new(VecDeque::new()),
@@ -88,7 +88,6 @@ impl Future for TicketFuture {
         {
             let mut wakers = me.sem.wakers.lock().expect("Dead thread");
             wakers.push_back(waker);
-            drop(wakers);
         }
 
         Poll::Pending
@@ -97,15 +96,12 @@ impl Future for TicketFuture {
 
 impl Drop for Ticket {
     fn drop(&mut self) {
-        let mut wakers_lock = self.sem.wakers.lock().expect("Dead thread");
-        let wakers = wakers_lock.drain(..).collect::<Vec<_>>();
-        drop(wakers_lock);
-
-        for waker in wakers {
-            waker.wake();
-        }
-
         let previous = self.sem.tickets[self.slot].swap(SLOT_FREE, Ordering::Release);
         assert!(previous == SLOT_OCCUPIED);
+
+        let mut wakers_lock = self.sem.wakers.lock().expect("Dead thread");
+        if let Some(waker) = wakers_lock.pop_front() {
+            waker.wake();
+        }
     }
 }

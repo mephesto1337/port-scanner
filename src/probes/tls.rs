@@ -2,7 +2,7 @@ use std::convert::TryFrom;
 use std::net::SocketAddr;
 use std::sync::Arc;
 
-use super::{Probe, ProbeStatus};
+use super::{Probe, ProbeCheckFuture, ProbeStatus};
 
 use tokio::net::TcpStream;
 use tokio_rustls::{
@@ -39,8 +39,8 @@ impl ServerCertVerifier for YoloServerCertVerifier {
         println!("      - subject: {}", cert.subject());
         println!(
             "      - dates  : between {} and {} ({})",
-            cert.validity().not_before.to_rfc2822(),
-            cert.validity().not_after.to_rfc2822(),
+            cert.validity().not_before.to_string(),
+            cert.validity().not_after.to_string(),
             if cert.validity().is_valid() {
                 "valid"
             } else {
@@ -51,7 +51,6 @@ impl ServerCertVerifier for YoloServerCertVerifier {
     }
 }
 
-#[async_trait::async_trait]
 impl Probe for TlsProbe {
     fn name(&self) -> &'static str {
         "tls"
@@ -64,21 +63,27 @@ impl Probe for TlsProbe {
         }
     }
 
-    async fn check(&self, peer_addr: SocketAddr) -> std::io::Result<ProbeStatus> {
-        let config = rustls::ClientConfig::builder()
-            .with_safe_defaults()
-            .with_custom_certificate_verifier(Arc::new(YoloServerCertVerifier))
-            .with_no_client_auth();
+    fn check(&self, peer_addr: SocketAddr) -> ProbeCheckFuture {
+        Box::pin(async move {
+            let config = rustls::ClientConfig::builder()
+                .with_safe_defaults()
+                .with_custom_certificate_verifier(Arc::new(YoloServerCertVerifier))
+                .with_no_client_auth();
 
-        let connector: TlsConnector = Arc::new(config).into();
-        let stream = TcpStream::connect(&peer_addr).await?;
-        let _ = connector
-            .connect(
-                rustls::ServerName::try_from("test-name.tld").unwrap(),
-                stream,
+            let connector: TlsConnector = Arc::new(config).into();
+            let stream = TcpStream::connect(&peer_addr).await?;
+            Ok(
+                match connector
+                    .connect(
+                        rustls::ServerName::try_from("test-name.tld").unwrap(),
+                        stream,
+                    )
+                    .await
+                {
+                    Ok(_) => ProbeStatus::Recognized,
+                    Err(_) => ProbeStatus::Unknown,
+                },
             )
-            .await?;
-
-        Ok(ProbeStatus::Recognized)
+        })
     }
 }
