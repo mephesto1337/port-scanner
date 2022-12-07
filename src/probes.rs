@@ -12,6 +12,7 @@ use crate::utils::run_with_timeout;
 
 mod dns;
 mod http;
+#[cfg(target_family = "unix")]
 mod tls;
 
 #[derive(Debug, PartialEq, Eq)]
@@ -40,11 +41,14 @@ static PROBES: AtomicPtr<Vec<BoxedProbe>> = AtomicPtr::new(ptr::null_mut());
 fn get_probes() -> &'static [BoxedProbe] {
     let probes_ptr = PROBES.load(Ordering::Relaxed);
     if probes_ptr.is_null() {
-        let probes = Box::new(vec![
-            Box::new(http::HttpProbe) as BoxedProbe,
-            Box::new(dns::DnsProbe) as BoxedProbe,
-            Box::new(tls::TlsProbe) as BoxedProbe,
-        ]);
+        let mut probes = Box::new(Vec::new());
+        probes.push(Box::new(http::HttpProbe) as BoxedProbe);
+        probes.push(Box::new(dns::DnsProbe) as BoxedProbe);
+        #[cfg(target_family = "unix")]
+        {
+            probes.push(Box::new(tls::TlsProbe) as BoxedProbe);
+        }
+
         PROBES.store(Box::leak(probes), Ordering::Relaxed);
     }
     let probes_ptr = PROBES.load(Ordering::Relaxed);
