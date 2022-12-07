@@ -1,7 +1,11 @@
-use std::future::Future;
-use std::io;
-use std::net::SocketAddr;
-use std::pin::Pin;
+use std::{
+    future::Future,
+    io,
+    net::SocketAddr,
+    pin::Pin,
+    ptr,
+    sync::atomic::{AtomicPtr, Ordering},
+};
 
 use crate::defaults::READ_TIMEOUT;
 use crate::utils::run_with_timeout;
@@ -30,12 +34,24 @@ pub trait Probe {
     fn check(&self, peer_addr: SocketAddr) -> ProbeCheckFuture;
 }
 
-lazy_static::lazy_static! {
-    static ref PROBES: Vec<Box<dyn Probe + Send + Sync>> = vec![
-        Box::new(http::HttpProbe) as Box<dyn Probe + Send + Sync>,
-        Box::new(dns::DnsProbe) as Box<dyn Probe + Send + Sync>,
-        Box::new(tls::TlsProbe) as Box<dyn Probe + Send + Sync>,
-    ];
+type BoxedProbe = Box<dyn Probe + Send + Sync>;
+static PROBES: AtomicPtr<Vec<BoxedProbe>> = AtomicPtr::new(ptr::null_mut());
+
+fn get_probes() -> &'static [BoxedProbe] {
+    let probes_ptr = PROBES.load(Ordering::Relaxed);
+    if probes_ptr.is_null() {
+        let probes = Box::new(vec![
+            Box::new(http::HttpProbe) as BoxedProbe,
+            Box::new(dns::DnsProbe) as BoxedProbe,
+            Box::new(tls::TlsProbe) as BoxedProbe,
+        ]);
+        PROBES.store(Box::leak(probes), Ordering::Relaxed);
+    }
+    let probes_ptr = PROBES.load(Ordering::Relaxed);
+
+    unsafe { probes_ptr.as_ref() }
+        .expect("Probes should be initiated")
+        .as_slice()
 }
 
 async fn check_probe(peer_addr: &SocketAddr, probe: &dyn Probe) -> io::Result<ProbeStatus> {
@@ -46,7 +62,7 @@ async fn check_probe(peer_addr: &SocketAddr, probe: &dyn Probe) -> io::Result<Pr
 
 pub async fn check_probes(peer_addr: &SocketAddr) -> io::Result<()> {
     // First pass, only check favorite ports
-    for probe in PROBES.iter() {
+    for probe in get_probes() {
         if probe.is_prefered_port(peer_addr.port()) {
             if check_probe(&peer_addr, probe.as_ref()).await? == ProbeStatus::Recognized {
                 // eprintln!(
@@ -60,7 +76,7 @@ pub async fn check_probes(peer_addr: &SocketAddr) -> io::Result<()> {
     }
 
     // Second pass, only check non-favorite ports
-    for probe in PROBES.iter() {
+    for probe in get_probes() {
         if !probe.is_prefered_port(peer_addr.port()) {
             if check_probe(&peer_addr, probe.as_ref()).await? == ProbeStatus::Recognized {
                 // eprintln!(

@@ -1,4 +1,4 @@
-use std::time::Duration;
+use std::{net::IpAddr, time::Duration};
 
 use clap::Parser;
 
@@ -11,11 +11,11 @@ mod utils;
 use defaults::*;
 
 #[derive(Debug, Parser)]
-#[structopt(name = "tcp-scanner", about = "TCP scanner in async Rust")]
+#[command(name = "tcp-scanner", about = "TCP scanner in async Rust")]
 struct Opt {
     /// Host to scan
     #[arg(short = 'H', long)]
-    host: std::net::IpAddr,
+    host: IpAddr,
 
     /// Port range
     #[arg(short, long)]
