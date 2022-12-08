@@ -68,11 +68,6 @@ pub async fn check_probes(peer_addr: &SocketAddr) {
     for probe in get_probes() {
         if probe.is_prefered_port(peer_addr.port()) {
             if check_probe(&peer_addr, probe.as_ref()).await == ProbeStatus::Recognized {
-                eprintln!(
-                    "Found protocol {} for port {}",
-                    probe.name(),
-                    peer_addr.port()
-                );
                 return;
             }
         }
@@ -82,11 +77,6 @@ pub async fn check_probes(peer_addr: &SocketAddr) {
     for probe in get_probes() {
         if !probe.is_prefered_port(peer_addr.port()) {
             if check_probe(&peer_addr, probe.as_ref()).await == ProbeStatus::Recognized {
-                eprintln!(
-                    "Found protocol {} for port {}",
-                    probe.name(),
-                    peer_addr.port()
-                );
                 return;
             }
         }

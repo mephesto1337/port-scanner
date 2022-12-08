@@ -57,7 +57,6 @@ async fn test_port(ip: IpAddr, port: u16) -> Port {
             if e.kind() == io::ErrorKind::ConnectionRefused {
                 PortStatus::Closed
             } else {
-                eprintln!("Got {} from {}:{}", e, &ip, port);
                 PortStatus::Filtered
             }
         }
