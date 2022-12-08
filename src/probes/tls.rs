@@ -1,53 +1,45 @@
-use std::convert::TryFrom;
 use std::net::SocketAddr;
-use std::sync::Arc;
 
 use super::{Probe, ProbeCheckFuture, ProbeStatus};
 
 use tokio::net::TcpStream;
-use tokio_rustls::{
-    rustls::{
-        self,
-        client::{ServerCertVerified, ServerCertVerifier},
-        Certificate, ServerName,
-    },
-    TlsConnector,
-};
+
+use tokio_native_tls::{native_tls::TlsConnector as NativeTlsConnector, TlsConnector};
 
 pub struct TlsProbe;
 
-struct YoloServerCertVerifier;
-
-impl ServerCertVerifier for YoloServerCertVerifier {
-    fn verify_server_cert(
-        &self,
-        end_entity: &Certificate,
-        _intermediates: &[Certificate],
-        _server_name: &ServerName,
-        _scts: &mut dyn Iterator<Item = &[u8]>,
-        _ocsp_response: &[u8],
-        _now: std::time::SystemTime,
-    ) -> Result<ServerCertVerified, rustls::Error> {
-        let cert = match x509_parser::parse_x509_certificate(end_entity.0.as_slice()) {
+impl TlsProbe {
+    fn show_cert(der: &[u8]) {
+        let cert = match x509_parser::parse_x509_certificate(der) {
             Ok((_rest, value)) => value,
-            Err(e) => {
-                eprintln!("Got error: {}", e);
-                return Ok(rustls::client::ServerCertVerified::assertion());
+            Err(_) => {
+                return;
             }
         };
+        let time_format = time::format_description::parse(
+            "[year]-[month]-[day] [hour]:[minute]:[second] [offset_hour sign:mandatory]:[offset_minute]",
+        )
+        .unwrap();
         println!("      - issuer : {}", cert.issuer());
         println!("      - subject: {}", cert.subject());
         println!(
             "      - dates  : between {} and {} ({})",
-            cert.validity().not_before.to_string(),
-            cert.validity().not_after.to_string(),
+            cert.validity()
+                .not_before
+                .to_datetime()
+                .format(&time_format)
+                .unwrap(),
+            cert.validity()
+                .not_after
+                .to_datetime()
+                .format(&time_format)
+                .unwrap(),
             if cert.validity().is_valid() {
                 "valid"
             } else {
                 "invalid"
             }
         );
-        return Ok(rustls::client::ServerCertVerified::assertion());
     }
 }
 
@@ -65,25 +57,25 @@ impl Probe for TlsProbe {
 
     fn check(&self, peer_addr: SocketAddr) -> ProbeCheckFuture {
         Box::pin(async move {
-            let config = rustls::ClientConfig::builder()
-                .with_safe_defaults()
-                .with_custom_certificate_verifier(Arc::new(YoloServerCertVerifier))
-                .with_no_client_auth();
+            let connector: TlsConnector = NativeTlsConnector::builder()
+                .danger_accept_invalid_certs(true)
+                .danger_accept_invalid_hostnames(true)
+                .build()
+                .expect("Cannot build TLS connector")
+                .into();
 
-            let connector: TlsConnector = Arc::new(config).into();
             let stream = TcpStream::connect(&peer_addr).await?;
-            Ok(
-                match connector
-                    .connect(
-                        rustls::ServerName::try_from("test-name.tld").unwrap(),
-                        stream,
-                    )
-                    .await
-                {
-                    Ok(_) => ProbeStatus::Recognized,
-                    Err(_) => ProbeStatus::Unknown,
-                },
-            )
+            Ok(match connector.connect("localhost", stream).await {
+                Ok(stream) => {
+                    if let Some(cert) = stream.get_ref().peer_certificate().ok().flatten() {
+                        if let Ok(der) = cert.to_der() {
+                            Self::show_cert(&der[..]);
+                        }
+                    }
+                    ProbeStatus::Recognized
+                }
+                Err(_) => ProbeStatus::Unknown,
+            })
         })
     }
 }

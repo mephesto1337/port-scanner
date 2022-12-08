@@ -142,9 +142,7 @@ async fn main() {
         println!("{}", p);
         if p.is_open() && !p.has_banner() {
             let peer_addr = (opts.host, p.num).into();
-            if let Err(e) = probes::check_probes(&peer_addr).await {
-                eprintln!("Issue when checking probes for {}: {}", p.num, e);
-            }
+            probes::check_probes(&peer_addr).await;
         }
     }
 }

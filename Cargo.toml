@@ -11,7 +11,6 @@ futures = "0.3"
 clap = { version = "4", features = ["derive"] }
 trust-dns-client = "0.22"
 rand = "0.8"
-
-[target.'cfg(target_family = "unix")'.dependencies]
-tokio-rustls = { version = "0.23", features = ["dangerous_configuration"] }
+tokio-native-tls = "0.3"
 x509-parser = "0.14"
+time = { version = "0.3", features = ["formatting"] }
